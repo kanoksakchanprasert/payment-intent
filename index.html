@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Direct API (No iFrame) - Payment Intent</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; background-color: #f3f4f6; }
+        
+        .terminal::-webkit-scrollbar { width: 8px; }
+        .terminal::-webkit-scrollbar-track { background: #1f2937; }
+        .terminal::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 4px; }
+        
+        .active-ring {
+            box-shadow: 0 0 0 4px rgba(234, 88, 12, 0.5); /* Orange highlight for this demo */
+            transition: all 0.3s ease;
+        }
+        
+        .fade-in { animation: fadeIn 0.5s ease-in; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+        /* Style for native input to emphasize it's NOT an iframe */
+        .native-input {
+            background-color: #fff;
+            border: 2px dashed #9ca3af;
+        }
+        .native-input:focus {
+            border-color: #ea580c;
+            outline: none;
+        }
+    </style>
+</head>
+<body class="text-gray-800 min-h-screen flex flex-col bg-gray-100">
+
+    <header class="bg-white shadow-sm py-4 px-6 mb-4 flex justify-between items-center z-10 relative">
+        <div>
+            <h1 class="text-2xl font-bold text-gray-900">Direct API (No iFrame) + Payment Intent</h1>
+            <p class="text-sm text-gray-500 mt-1">
+                <span class="font-semibold text-orange-600">Native Fields:</span> ร้านค้าสร้าง HTML Input เอง 100% แต่ใช้ Token ล็อคราคาไว้ไม่ให้แก้
+            </p>
+        </div>
+        <button id="resetBtn" class="bg-gray-200 hover:bg-gray-300 text-gray-700 px-4 py-2 rounded font-medium transition">
+            🔄 Reset Demo
+        </button>
+    </header>
+
+    <main class="flex-grow px-6 flex flex-col xl:flex-row gap-6 mb-6">
+        
+        <!-- 1. Merchant Frontend -->
+        <section id="panel-frontend" class="flex-1 bg-white rounded-xl shadow-md border-t-4 border-blue-500 flex flex-col transition-all duration-300 min-h-[400px]">
+            <div class="bg-blue-50 py-2 px-4 rounded-t-lg border-b border-blue-100 flex items-center gap-2">
+                <div class="w-3 h-3 rounded-full bg-blue-500"></div>
+                <h2 class="font-bold text-blue-800 text-sm">1. Merchant Frontend (Native HTML)</h2>
+            </div>
+            <div class="p-6 flex-grow flex flex-col items-center relative overflow-y-auto">
+                
+                <!-- Initial State: Product Page -->
+                <div id="ui-product" class="text-center w-full max-w-sm mt-4">
+                    <div class="bg-gray-100 h-24 rounded-lg flex items-center justify-center mb-4">
+                        <span class="text-4xl">👜</span>
+                    </div>
+                    <h3 class="font-bold text-lg mb-1">Luxury Bag</h3>
+                    <p class="text-gray-500 text-sm mb-4">Order ID: BAG-555</p>
+                    
+                    <button id="btn-checkout" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg shadow-lg transition">
+                        Proceed to Payment
+                    </button>
+                </div>
+
+                <!-- Processing / Loading State -->
+                <div id="ui-processing" class="hidden text-center fade-in text-blue-600 font-medium my-auto">
+                    <svg class="animate-spin h-8 w-8 mx-auto mb-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                    <span id="processing-text">กำลังติดต่อสร้าง Payment Token...</span>
+                </div>
+
+                <!-- Native Payment Form (No iFrame) -->
+                <div id="ui-payment-form" class="hidden w-full max-w-sm fade-in mt-2">
+                    
+                    <div class="mb-4">
+                        <h3 class="font-bold text-gray-800">Payment Details</h3>
+                        <p class="text-xs text-gray-500">Amount to pay: <span class="font-bold text-gray-900 text-sm">25,000 THB</span></p>
+                    </div>
+
+                    <!-- Native Inputs -->
+                    <div class="space-y-3 mb-4">
+                        <div>
+                            <label class="block text-xs font-semibold text-gray-700 mb-1">Card Number (Native HTML Input)</label>
+                            <input type="text" id="card-num" value="4545 1234 5678 9000" class="w-full text-sm p-2 rounded native-input text-gray-800">
+                        </div>
+                        <div class="flex gap-2">
+                            <div class="flex-1">
+                                <label class="block text-xs font-semibold text-gray-700 mb-1">Expiry</label>
+                                <input type="text" id="card-exp" value="09/28" class="w-full text-sm p-2 rounded native-input text-gray-800">
+                            </div>
+                            <div class="flex-1">
+                                <label class="block text-xs font-semibold text-gray-700 mb-1">CVV</label>
+                                <input type="password" id="card-cvv" value="123" class="w-full text-sm p-2 rounded native-input text-gray-800">
+                            </div>
+                        </div>
+                        <input type="hidden" id="hidden-token" value="">
+                    </div>
+
+                    <button id="btn-submit-js" class="w-full bg-orange-500 hover:bg-orange-600 text-white font-bold py-3 px-4 rounded-lg shadow-lg transition">
+                        Submit via Javascript (paycomp)
+                    </button>
+                    <p class="text-[10px] text-center text-gray-400 mt-2">Locked Token: <span id="ui-token-display" class="font-mono">...</span></p>
+                </div>
+
+                <!-- Success State -->
+                <div id="ui-success" class="hidden text-center fade-in w-full my-auto">
+                    <div class="w-16 h-16 bg-green-100 text-green-500 rounded-full flex items-center justify-center mx-auto mb-4 text-3xl">✓</div>
+                    <h3 class="font-bold text-xl text-green-700 mb-2">Payment Successful!</h3>
+                </div>
+            </div>
+        </section>
+
+        <!-- 2. Merchant Backend -->
+        <section id="panel-backend" class="flex-1 bg-white rounded-xl shadow-md border-t-4 border-emerald-500 flex flex-col transition-all duration-300 min-h-[400px]">
+            <div class="bg-emerald-50 py-2 px-4 rounded-t-lg border-b border-emerald-100 flex items-center gap-2">
+                <div class="w-3 h-3 rounded-full bg-emerald-500"></div>
+                <h2 class="font-bold text-emerald-800 text-sm">2. Merchant Backend</h2>
+            </div>
+            <div class="p-6 flex-grow flex flex-col relative overflow-hidden">
+                <div class="bg-gray-50 border rounded text-xs mb-4">
+                    <table class="w-full text-left">
+                        <thead class="bg-gray-100"><tr><th class="p-2">Item</th><th class="p-2">Price (THB)</th></tr></thead>
+                        <tbody><tr><td class="p-2 border-t">BAG-555</td><td class="p-2 border-t font-bold text-emerald-600">25,000</td></tr></tbody>
+                    </table>
+                </div>
+                <div id="backend-status" class="flex-grow flex flex-col justify-center items-center text-center text-gray-400">
+                    <div class="text-4xl mb-2">🖥️</div>
+                    <p class="text-sm">Standing by...</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 3. Payment Gateway API (paycomp) -->
+        <section id="panel-pg" class="flex-1 bg-white rounded-xl shadow-md border-t-4 border-purple-500 flex flex-col transition-all duration-300 min-h-[400px]">
+            <div class="bg-purple-50 py-2 px-4 rounded-t-lg border-b border-purple-100 flex items-center gap-2">
+                <div class="w-3 h-3 rounded-full bg-purple-500"></div>
+                <h2 class="font-bold text-purple-800 text-sm">3. PG API (paycomp endpoint)</h2>
+            </div>
+            <div class="p-6 flex-grow flex flex-col relative">
+                <div class="mb-4 text-xs">
+                    <div class="flex justify-between items-center mb-1">
+                        <span class="text-gray-500 font-bold">PG Internal Database</span>
+                    </div>
+                    <div class="bg-gray-900 text-gray-300 rounded p-3 h-24 overflow-y-auto font-mono text-[10px]" id="pg-db-view">
+                        // Waiting for intent
+                    </div>
+                </div>
+                <div id="pg-status" class="flex-grow flex flex-col justify-center items-center text-center text-gray-400">
+                    <div class="text-4xl mb-2">☁️</div>
+                    <p class="text-sm">API Ready to receive requests</p>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <section class="min-h-[300px] h-[35vh] bg-gray-900 mx-6 mb-6 rounded-xl shadow-lg flex flex-col border border-gray-700">
+        <div class="bg-gray-800 text-gray-300 text-xs py-2 px-4 rounded-t-xl border-b border-gray-700 flex justify-between items-center">
+            <div class="flex gap-2">
+                <div class="w-3 h-3 rounded-full bg-red-500"></div>
+                <div class="w-3 h-3 rounded-full bg-yellow-500"></div>
+                <div class="w-3 h-3 rounded-full bg-green-500"></div>
+                <span class="ml-2 font-mono">JS Network Activity Log</span>
+            </div>
+            <span>Status: <span id="log-status" class="text-green-400">Ready</span></span>
+        </div>
+        <div id="terminal" class="terminal p-4 font-mono text-sm overflow-y-auto flex-grow flex flex-col gap-2"></div>
+    </section>
+
+    <script>
+        const ui = {
+            product: document.getElementById('ui-product'),
+            processing: document.getElementById('ui-processing'),
+            form: document.getElementById('ui-payment-form'),
+            success: document.getElementById('ui-success'),
+            backendStatus: document.getElementById('backend-status'),
+            pgStatus: document.getElementById('pg-status'),
+            pgDbView: document.getElementById('pg-db-view'),
+            tokenDisplay: document.getElementById('ui-token-display'),
+            hiddenToken: document.getElementById('hidden-token')
+        };
+        const panels = {
+            frontend: document.getElementById('panel-frontend'),
+            backend: document.getElementById('panel-backend'),
+            pg: document.getElementById('panel-pg')
+        };
+        const terminal = document.getElementById('terminal');
+        const logStatus = document.getElementById('log-status');
+
+        let pgDB = {};
+        const ORDER_ID = 'BAG-555';
+        const AMOUNT = 25000;
+        const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+        const highlight = (panel, msg) => {
+            Object.values(panels).forEach(p => p.classList.remove('active-ring', 'transform', 'scale-[1.02]'));
+            if(panel) {
+                panels[panel].classList.add('active-ring', 'transform', 'scale-[1.02]');
+                logStatus.innerText = msg;
+                logStatus.className = 'text-orange-400 animate-pulse';
+            } else {
+                logStatus.innerText = 'Ready';
+                logStatus.className = 'text-green-400';
+            }
+        };
+
+        const colors = {
+            blue: 'border-blue-500 text-blue-400',
+            emerald: 'border-emerald-500 text-emerald-400',
+            purple: 'border-purple-500 text-purple-400',
+            orange: 'border-orange-500 text-orange-400'
+        };
+
+        const logNetwork = (step, from, to, method, payload, colorKey) => {
+            const time = new Date().toLocaleTimeString().split(' ')[0];
+            const div = document.createElement('div');
+            div.className = `border-l-2 ${colors[colorKey].split(' ')[0]} pl-3 py-1 fade-in`;
+            div.innerHTML = `
+                <div class="flex items-center gap-2 ${colors[colorKey].split(' ')[1]} mb-1">
+                    <span class="text-xs bg-gray-700 px-1 rounded">[${time}]</span>
+                    <span class="font-bold">Step ${step}: ${from} ➔ ${to}</span>
+                    <span class="bg-gray-800 px-2 py-0.5 rounded text-xs border border-gray-600">${method}</span>
+                </div>
+                <div class="text-gray-300 text-[11px] bg-gray-800 p-2 rounded">
+                    ${JSON.stringify(payload, null, 2).replace(/\n/g, '<br>&nbsp;&nbsp;')}
+                </div>
+            `;
+            terminal.appendChild(div);
+            terminal.scrollTop = terminal.scrollHeight;
+        };
+
+        // Phase 1: Get Token
+        document.getElementById('btn-checkout').addEventListener('click', async (e) => {
+            e.currentTarget.disabled = true;
+            terminal.innerHTML = '';
+            
+            // 1. Frontend -> Backend
+            highlight('frontend', 'Requesting Order Token...');
+            ui.product.classList.add('hidden');
+            ui.processing.classList.remove('hidden');
+            logNetwork(1, 'Frontend JS', 'Merchant Backend', 'POST /api/create-order', { orderId: ORDER_ID }, 'blue');
+            await sleep(1000);
+
+            // 2. Backend -> PG
+            highlight('backend', 'Creating Intent on PG...');
+            ui.backendStatus.innerHTML = `<div class="text-4xl mb-2 animate-bounce">🔒</div><p class="text-sm text-emerald-600">Creating intent for 25,000 THB</p>`;
+            logNetwork(2, 'Merchant Backend', 'PG Server', 'POST /v1/intents', { amount: AMOUNT, merchant: 'sk_***' }, 'emerald');
+            await sleep(1000);
+
+            // 3. PG -> Backend
+            highlight('pg', 'PG Saving Intent...');
+            const activeToken = 'tok_dir_' + Math.random().toString(36).substr(2, 6);
+            pgDB[activeToken] = { amount: AMOUNT, status: 'pending' };
+            ui.pgDbView.innerHTML = JSON.stringify(pgDB, null, 1).replace(/[{}]/g, '');
+            ui.pgStatus.innerHTML = `<div class="text-4xl mb-2">🎫</div><p class="text-sm text-purple-600">Generated Token: ${activeToken}</p>`;
+            logNetwork(3, 'PG Server', 'Merchant Backend', '200 OK', { token: activeToken }, 'purple');
+            await sleep(1000);
+
+            // 4. Show Form
+            highlight('frontend', 'Token received. Awaiting User Input.');
+            ui.processing.classList.add('hidden');
+            ui.form.classList.remove('hidden');
+            ui.tokenDisplay.innerText = activeToken;
+            ui.hiddenToken.value = activeToken; // Hidden field in form
+            logNetwork(4, 'Merchant Backend', 'Frontend JS', '200 OK', { token: activeToken }, 'emerald');
+        });
+
+        // Phase 2: Direct JS Submit
+        document.getElementById('btn-submit-js').addEventListener('click', async (e) => {
+            e.currentTarget.disabled = true;
+            e.currentTarget.innerText = "Submitting...";
+
+            const cardData = document.getElementById('card-num').value;
+            const token = document.getElementById('hidden-token').value;
+
+            // 5. Frontend JS -> PG API DIRECTLY
+            highlight('frontend', 'JS Submitting directly to PG paycomp...');
+            logNetwork(5, 'Frontend JS', 'PG API (paycomp)', 'AJAX POST /api/paycomp', {
+                intent_token: token,
+                card_number: cardData,
+                cvc: "***",
+                _WARNING: "Notice we do NOT send the 'amount' field here. PG gets it from the token."
+            }, 'orange');
+            
+            await sleep(1500);
+
+            // 6. PG Processes Payment
+            highlight('pg', 'PG Verifying Token & Charging...');
+            pgDB[token].status = 'succeeded';
+            ui.pgDbView.innerHTML = JSON.stringify(pgDB, null, 1).replace(/[{}]/g, '').replace('succeeded', '<span class="text-green-400">succeeded</span>');
+            ui.pgStatus.innerHTML = `<div class="text-4xl mb-2">✅</div><p class="text-sm text-green-600">Card Charged for ${AMOUNT} THB (From DB)</p>`;
+            
+            // Webhook to Backend
+            logNetwork(6, 'PG Server', 'Merchant Backend', 'WEBHOOK /events', { event: 'success', token: token }, 'purple');
+            ui.backendStatus.innerHTML = `<div class="text-4xl mb-2">🎉</div><p class="text-sm text-green-600">Webhook received. Order Paid!</p>`;
+            await sleep(1000);
+
+            // 7. Success Response back to JS
+            highlight('frontend', 'Payment Complete');
+            logNetwork(7, 'PG API (paycomp)', 'Frontend JS', '200 OK', { status: 'success' }, 'purple');
+            ui.form.classList.add('hidden');
+            ui.success.classList.remove('hidden');
+            highlight(null);
+        });
+
+        // Reset
+        document.getElementById('resetBtn').addEventListener('click', () => {
+            ui.product.classList.remove('hidden');
+            ui.processing.classList.add('hidden');
+            ui.form.classList.add('hidden');
+            ui.success.classList.add('hidden');
+            
+            const btn1 = document.getElementById('btn-checkout');
+            btn1.disabled = false;
+            
+            const btn2 = document.getElementById('btn-submit-js');
+            btn2.disabled = false;
+            btn2.innerText = 'Submit via Javascript (paycomp)';
+
+            ui.backendStatus.innerHTML = `<div class="text-4xl mb-2">🖥️</div><p class="text-sm">Standing by...</p>`;
+            ui.pgStatus.innerHTML = `<div class="text-4xl mb-2">☁️</div><p class="text-sm">API Ready to receive requests</p>`;
+            ui.pgDbView.innerHTML = '// Waiting for intent';
+            pgDB = {};
+            terminal.innerHTML = '<div class="text-gray-500">System initialized. Awaiting user action.</div>';
+            highlight(null);
+        });
+    </script>
+</body>
+</html>
